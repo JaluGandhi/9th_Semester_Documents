@@ -1,0 +1,1684 @@
+string user = HttpContext.User.Identity.Name.Split('\\')[1];
+                Session["user"] = user;
+                DirectoryService ds = new DirectoryService();
+                Session["userName"] = ds.GetDisplayNamefromUserID(user);
+				
+				
+---------------------Admin Controller--------------------------------------------------------
+using System;
+using System.Collections.Generic;
+using GleamTech.DocumentUltimate;
+using GleamTech.DocumentUltimate.AspNet;
+using GleamTech.DocumentUltimate.AspNet.UI;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+using InformationSecurtiyPortal.Models;
+using System.Net;
+using System.IO;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Data;
+using System.Xml;
+using InformationSecurtiyPortal.AD;
+using Newtonsoft.Json;
+using Spire.Doc;
+
+namespace InformationSecurtiyPortal.Controllers
+{
+    public class AdminController : Controller
+    {
+        // GET: Admin
+        InformationSecurityEntities db = new InformationSecurityEntities();
+        string Attchment = ConfigurationManager.AppSettings["MailAttachmentUrl"].ToString();
+
+        string lib = System.Web.Configuration.WebConfigurationManager.AppSettings["lib"]; //ODMDOCS_LNPROD
+        string sharePointId = System.Web.Configuration.WebConfigurationManager.AppSettings["id"];
+        string pwd = System.Web.Configuration.WebConfigurationManager.AppSettings["pwd"];
+        string shpurl = System.Web.Configuration.WebConfigurationManager.AppSettings["shpurl"];
+        string shpdomain = System.Web.Configuration.WebConfigurationManager.AppSettings["shpdomain"];
+        string ApprovedBy = System.Web.Configuration.WebConfigurationManager.AppSettings["ApprovedBy"];
+        DirectoryService ds = new DirectoryService();
+        public AdminController()
+        {
+            db.Configuration.ProxyCreationEnabled = false;
+            int count = 0;
+            var temp = db.vw_PolicyProcedureVersionDetails.Where(a => a.Status == "Submitted").Where(a => a.Category_Id == 1).ToList();
+            if (temp.Count != 0)
+            {
+                count++;
+            }
+            temp = db.vw_PolicyProcedureVersionDetails.Where(a => a.Status == "Submitted").Where(a => a.Category_Id == 2).ToList();
+            if (temp.Count != 0)
+            {
+                count++;
+            }
+            string data = "";
+            List<String> lst = new List<String> { };
+
+            data = db.vw_PolicyProcedureVersionDetails.Where(a => a.Status == "Submitted").Where(a => a.Category_Id == 1).ToList().Count().ToString() + " " + "Policy";
+            lst.Add(data);
+            data = db.vw_PolicyProcedureVersionDetails.Where(a => a.Status == "Submitted").Where(a => a.Category_Id == 2).Count().ToString() + " " + "Procedure";
+            lst.Add(data);
+
+            ViewBag.totalNotification = count;
+            ViewBag.notificationData = lst;
+        }
+        public ActionResult Index()
+        {
+            ViewBag.TotalSubCategory = db.Tbl_SubCategory.Count();
+            ViewBag.TotalSubcategoryTwo = db.Tbl_SubCategory_Two.Count();
+            ViewBag.TotalPendingPolicy = db.vw_PolicyProcedureVersionDetails.Where(a => a.Category_Id == 1).Where(a => a.Status == "Submitted").Count();
+            ViewBag.TotalPendingProcedure = db.vw_PolicyProcedureVersionDetails.Where(a => a.Category_Id == 2).Where(a => a.Status == "Submitted").Count();
+            return View();
+        }
+
+        public ActionResult SubCategory()
+        {
+            return View();
+        }
+
+        public JsonResult SubCategoryAddAndUpdate(string id, string categoryId, string name, string url, string responsiblePerson, string responsiblePersonManager, string command)
+        {
+            Tbl_SubCategory Tsb;
+            var msg = "Success";
+            int tempCategoryId = Convert.ToInt32(categoryId);
+            if (command == "Save")
+            {
+                try
+                {
+                    Tsb = new Tbl_SubCategory();
+                    Tsb.Category_FK_Id = tempCategoryId;
+                    Tsb.SubCategoryName = name;
+                    Tsb.SubCategoryUrl = url;
+                    Tsb.ResponsiblePerson = responsiblePerson;
+                    Tsb.ResponsiblePersonManager = responsiblePersonManager;
+                    db.Tbl_SubCategory.Add(Tsb);
+                    db.SaveChanges();
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+            else if (command == "Update")
+            {
+                try
+                {
+                    int tempSubCategoryId = Convert.ToInt32(id);
+                    Tsb = db.Tbl_SubCategory.Where(a => a.SubCategory_Id == tempSubCategoryId).FirstOrDefault();
+                    Tsb.Category_FK_Id = tempCategoryId;
+                    Tsb.SubCategoryName = name;
+                    Tsb.SubCategoryUrl = url;
+                    Tsb.ResponsiblePerson = responsiblePerson;
+                    Tsb.ResponsiblePersonManager = responsiblePersonManager;
+                    db.Tbl_SubCategory.Add(Tsb);
+                    db.Entry(Tsb).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+            msg = "Fail";
+            return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+        public JsonResult deleteSubcategory(string Id)
+        {
+            var msg = "";
+            try
+            {
+                Tbl_SubCategory Tsc = db.Tbl_SubCategory.Find(Convert.ToInt32(Id));
+                //var tst = db.Tbl_SubCategory_Two.Where(t => t.SubCategory_FK_Id == Tsc.SubCategory_Id);
+
+                db.Tbl_SubCategory_Two.RemoveRange(db.Tbl_SubCategory_Two.Where(t => t.SubCategory_FK_Id == Tsc.SubCategory_Id));
+                db.SaveChanges();
+
+                db.Tbl_SubCategory.Remove(Tsc);
+                db.SaveChanges();
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch
+            {
+                msg = "Fail";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        public ActionResult SubCategoryTwo()
+        {
+            return View();
+        }
+
+        public JsonResult checkSubcategoryTwoLogExist(string subCategoryId, string month)
+        {
+            int tempId = Convert.ToInt32(subCategoryId);
+            var status = db.SP_GetLogDetailStatusForNewEntry(tempId, month).FirstOrDefault();
+            if (!(status == null || status == ""))
+                status = status.ToString();
+            else
+                status = "";
+            return Json(status, JsonRequestBehavior.AllowGet);
+        }
+        public JsonResult SubCategoryTwoAddAndUpdateForLog(string id, string categoryId, string subCategoryId, string name, string docPath, string description, string command, string month)
+        {
+            Tbl_SubCategory_Two Tstwo;
+            var msg = "Success";
+            int tempCategoryId = Convert.ToInt32(categoryId);
+            int tempsubCategoryId = Convert.ToInt32(subCategoryId);
+            if (command == "Save")
+            {
+                try
+                {
+                    HttpFileCollectionBase files = Request.Files;
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        Tstwo = new Tbl_SubCategory_Two();
+                        Tstwo.Description = description;
+
+                        Tstwo.SubCategoryTwo_Name = name;
+                        Tstwo.SubCategory_FK_Id = tempsubCategoryId;
+                        db.Tbl_SubCategory_Two.Add(Tstwo);
+                        db.SaveChanges();
+                        Tbl_LogDetails tld = new Tbl_LogDetails();
+                        tld.SubCategoryTwo_FK_Id = Tstwo.SubCategoryTwo_Id;
+                        tld.SubmittedBy = Convert.ToString(Session["user"]);
+                        tld.SubmittedOn = DateTime.Now;
+                        tld.Status = "In Progress";
+                        tld.Month = month;
+                        db.Tbl_LogDetails.Add(tld);
+                        db.SaveChanges();
+                        string lastInstertedId = Tstwo.SubCategoryTwo_Id.ToString();
+                        fileUploadForLog("Doc", lastInstertedId, categoryId, subCategoryId, name, i);
+                    }
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+            else if (command == "Update")
+            {
+                try
+                {
+                    int tempSubCategoryTwoId = Convert.ToInt32(id);
+                    Tstwo = db.Tbl_SubCategory_Two.Where(a => a.SubCategoryTwo_Id == tempSubCategoryTwoId).FirstOrDefault();
+                    Tstwo.Description = description;
+                    //Tstwo.DocPath = docPath;
+                    Tstwo.SubCategoryTwo_Name = name;
+                    Tstwo.SubCategory_FK_Id = tempsubCategoryId;
+                    db.Entry(Tstwo).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+            return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult SubCategoryTwoAddAndUpdate(string id, string categoryId, string subCategoryId, string name, string docPath, string description, string command)
+        {
+            Tbl_SubCategory_Two Tstwo;
+            var msg = "Success";
+            int tempCategoryId = Convert.ToInt32(categoryId);
+            int tempsubCategoryId = Convert.ToInt32(subCategoryId);
+            if (command == "Save")
+            {
+                try
+                {
+                    string subCategoryName = db.Tbl_SubCategory.Find(tempsubCategoryId).SubCategoryName.ToString();
+
+
+                    Tstwo = new Tbl_SubCategory_Two();
+                    Tstwo.Description = description;
+
+                    Tstwo.SubCategoryTwo_Name = name;
+                    Tstwo.SubCategory_FK_Id = tempsubCategoryId;
+                    db.Tbl_SubCategory_Two.Add(Tstwo);
+
+
+                    db.SaveChanges();
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+            else if (command == "Update")
+            {
+                try
+                {
+                    int tempSubCategoryTwoId = Convert.ToInt32(id);
+                    Tstwo = db.Tbl_SubCategory_Two.Where(a => a.SubCategoryTwo_Id == tempSubCategoryTwoId).FirstOrDefault();
+                    Tstwo.Description = description;
+                    //Tstwo.DocPath = docPath;
+                    Tstwo.SubCategoryTwo_Name = name;
+                    Tstwo.SubCategory_FK_Id = tempsubCategoryId;
+                    db.Entry(Tstwo).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    msg = "Fail";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+            }
+
+            return Json(msg, JsonRequestBehavior.AllowGet);
+
+        }
+
+        public JsonResult fileUpload(string uploadFor, string id, string categoryId, string subCategoryId, string name, string command)
+        {
+            string msg = "Fail";
+            try
+            {
+                HttpFileCollectionBase files = Request.Files;
+                int tempCategoryId = Convert.ToInt32(categoryId);
+                int tempsubCategoryId = Convert.ToInt32(subCategoryId);
+                string fileName = "";
+                string extension = "";
+                string categoryName = db.Tbl_Category.Find(tempCategoryId).Name;
+                string subCategoryName = db.Tbl_SubCategory.Find(tempsubCategoryId).SubCategoryName;
+                string subCategoryTwoName = name;
+                XmlNode xmlresCategoryFolder = createFolder(sharePointId, pwd, categoryName, Attchment, lib);
+                string url = "";
+                string tempAttachment = "";
+                if (categoryName == "Policies" || categoryName == "Procedure")
+                {
+                    url = Attchment + "/" + categoryName + "/" + subCategoryTwoName + "/";
+                    tempAttachment = Attchment + "/" + categoryName;
+                }
+                else
+                {
+                    url = Attchment + "/" + categoryName + "/" + subCategoryName + "/" + subCategoryTwoName + "/";
+                    tempAttachment = Attchment + "/" + categoryName + "/" + subCategoryName;
+                    XmlNode xmlresSubCategoryFolder = createFolder(sharePointId, pwd, subCategoryName, Attchment + "/" + categoryName, lib);
+                }
+                Tbl_SubCategory_Two Tstwo;
+                if (command == "Save")
+                {
+                    Tstwo = db.Tbl_SubCategory_Two.Find(db.Tbl_SubCategory_Two.Max(a => a.SubCategoryTwo_Id));
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        fileName = System.IO.Path.GetFileName(Request.Files[i].FileName);
+                        extension = fileName.Split('.')[1];
+                        HttpPostedFileBase file = files[i];
+                        fileName = db.Tbl_SubCategory_Two.Max(a => a.SubCategoryTwo_Id) + "_" + fileName;
+                        url = url + fileName;
+
+                        string ext = System.IO.Path.GetExtension(fileName);
+                        if (uploadFor == "Image")
+                            Tstwo.ImageUrl = url;
+                        else if (uploadFor == "Doc")
+                            Tstwo.DocPath = url;
+                        db.Entry(Tstwo).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        if (ext.ToLower() == ".docx" || ext.ToLower() == ".png" || ext.ToLower() == ".gif" || ext.ToLower() == ".pdf" || ext.ToLower() == ".jpg" || ext.ToLower() == ".jpeg" || ext.ToLower() == ".xlsx")
+                        {
+
+
+
+                            byte[] bytes;
+                            using (var br = new System.IO.BinaryReader(file.InputStream))
+                            {
+                                bytes = br.ReadBytes(file.ContentLength);
+                            }
+                            XmlNode xmlres = createFolder(sharePointId, pwd, subCategoryTwoName, tempAttachment, lib);
+                            string res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+                            if (res != "" && res.Substring(0, 1).Equals("1"))
+                            {
+                                return Json("Success", JsonRequestBehavior.AllowGet);
+                            }
+
+                        }
+                    }
+
+                }
+                else if (command == "Update")
+                {
+                    Tstwo = db.Tbl_SubCategory_Two.Find(Convert.ToInt32(id));
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        fileName = System.IO.Path.GetFileName(Request.Files[i].FileName);
+                        extension = fileName.Split('.')[1];
+                        HttpPostedFileBase file = files[i];
+                        fileName = db.Tbl_SubCategory_Two.Max(a => a.SubCategoryTwo_Id) + "_" + fileName;
+                        url = url + fileName;
+
+                        string ext = System.IO.Path.GetExtension(fileName);
+                        if (uploadFor == "Image")
+                            Tstwo.ImageUrl = url;
+                        else if (uploadFor == "Doc")
+                            Tstwo.DocPath = url;
+                        db.Entry(Tstwo).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        if (ext.ToLower() == ".docx" || ext.ToLower() == ".png" || ext.ToLower() == ".gif" || ext.ToLower() == ".pdf" || ext.ToLower() == ".jpg" || ext.ToLower() == ".jpeg" || ext.ToLower() == ".xlsx")
+                        {
+                            byte[] bytes;
+                            using (var br = new System.IO.BinaryReader(file.InputStream))
+                            {
+                                bytes = br.ReadBytes(file.ContentLength);
+                            }
+                            XmlNode xmlres = createFolder(sharePointId, pwd, subCategoryTwoName, tempAttachment, lib);
+                            string res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+                            if (res != "" && res.Substring(0, 1).Equals("1"))
+                            {
+                                return Json("Success", JsonRequestBehavior.AllowGet);
+                            }
+
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+
+
+            return Json("Fail", JsonRequestBehavior.AllowGet); ;
+
+        }
+
+        public XmlNode createFolder(string sharePointId, string pwd, string folder, string fileUrl, string library)
+        {
+            list.Lists li = new list.Lists();
+            //li.Url = "http://vpwtsheion/_vti_bin/lists.asmx";
+            NetworkCredential nc = new NetworkCredential(sharePointId, pwd, shpdomain);
+            li.Credentials = nc;
+            string xml = "<Method ID='1' Cmd='New'><Field Name='ID'>New</Field ><Field Name='FSObjType'>1</Field>";
+            xml += "<Field Name='BaseName'>" + folder + "</Field>";
+            xml += "</Method>";
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(xml);
+            XmlElement Batch = doc.CreateElement("Batch");
+            Batch.SetAttribute("OnError", "Continue");
+            Batch.SetAttribute("ListVersion", "1");
+            Batch.SetAttribute("ViewName", "");
+            Batch.SetAttribute("RootFolder", fileUrl);
+            Batch.InnerXml = xml;
+            XmlNode resultNode = li.UpdateListItems(library, Batch);
+            return resultNode;
+        }
+
+        public JsonResult fileUploadForLog(string uploadFor, string id, string categoryId, string subCategoryId, string name, int fileId)
+        {
+            string msg = "Fail";
+            try
+            {
+                HttpFileCollectionBase files = Request.Files;
+                int tempCategoryId = Convert.ToInt32(categoryId);
+                int tempsubCategoryId = Convert.ToInt32(subCategoryId);
+                string fileName = "";
+                string extension = "";
+                string categoryName = db.Tbl_Category.Find(tempCategoryId).Name;
+                string subCategoryName = db.Tbl_SubCategory.Find(tempsubCategoryId).SubCategoryName;
+                string subCategoryTwoName = name;
+                XmlNode xmlresCategoryFolder = createFolder(sharePointId, pwd, categoryName, Attchment, lib);
+                string url = "";
+                string tempAttachment = "";
+
+                url = Attchment + "/" + categoryName + "/" + subCategoryName + "/" + subCategoryTwoName + "/";
+                tempAttachment = Attchment + "/" + categoryName + "/" + subCategoryName;
+                XmlNode xmlresSubCategoryFolder = createFolder(sharePointId, pwd, subCategoryName, Attchment + "/" + categoryName, lib);
+                Tbl_SubCategory_Two Tstwo;
+                Tstwo = db.Tbl_SubCategory_Two.Find(db.Tbl_SubCategory_Two.Max(a => a.SubCategoryTwo_Id));
+                //for (int i = 0; i < 1; i++)
+                //{
+                fileName = System.IO.Path.GetFileName(Request.Files[fileId].FileName);
+                extension = fileName.Split('.')[1];
+                HttpPostedFileBase file = files[fileId];
+                fileName = db.Tbl_SubCategory_Two.Max(a => a.SubCategoryTwo_Id) + "_" + fileName;
+                url = url + fileName;
+                string ext = System.IO.Path.GetExtension(fileName);
+                if (uploadFor == "Doc")
+                    Tstwo.DocPath = url;
+                db.Entry(Tstwo).State = System.Data.Entity.EntityState.Modified;
+                db.SaveChanges();
+                //if (ext.ToLower() == ".docx" || ext.ToLower() == ".pdf" || ext.ToLower() == ".txt" || ext.ToLower() == ".jpg" || ext.ToLower() == ".jpeg" || ext.ToLower() == ".xlsx")
+                //{
+
+                byte[] bytes;
+                using (var br = new System.IO.BinaryReader(file.InputStream))
+                {
+                    bytes = br.ReadBytes(file.ContentLength);
+                }
+                XmlNode xmlres = createFolder(sharePointId, pwd, subCategoryTwoName, tempAttachment, lib);
+                string res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+                if (res != "" && res.Substring(0, 1).Equals("1"))
+                {
+                    return Json("Success", JsonRequestBehavior.AllowGet);
+                }
+                //}
+                //}
+            }
+            catch
+            {
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            return Json("Fail", JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult fileUploadForPolicyAndProcedure(string Id, string categoryId, string subCategoryTwoId, string sectionAffected, string version, string init_Remark, string submittedOn, string IsChange)
+        {
+            string msg = "Fail";
+            Document doc = new Document();
+            try
+            {
+                Tbl_PolicyProcedureVersionDetails Tsp;
+                string user = HttpContext.User.Identity.Name.Split('\\')[1];
+
+
+                int tempCategoryId = Convert.ToInt32(categoryId);
+                int tempsubCategoryTwoId = Convert.ToInt32(subCategoryTwoId);
+                string fileName = "";
+                string extension = "";
+                string categoryName = db.Tbl_Category.Find(tempCategoryId).Name;
+                string subCategoryTwoName = db.Tbl_SubCategory_Two.Find(tempsubCategoryTwoId).SubCategoryTwo_Name;
+
+
+
+                byte[] bytes;
+                string res = "";
+                string dt = DateTime.Now.Date.ToString("dd_MM_yyyy");
+                if (IsChange == "Yes")
+                {
+                    Tsp = db.Tbl_PolicyProcedureVersionDetails.Find(db.Tbl_PolicyProcedureVersionDetails.Max(a => a.PolicyProcedureVersionDetails_Id));
+                    //upload new file on share point starts here
+                    HttpFileCollectionBase files = Request.Files;
+                    string url = Attchment + "/" + categoryName + "/" + subCategoryTwoName + "/";
+                    for (int i = 0; i < files.Count; i++)
+                    {
+                        fileName = System.IO.Path.GetFileName(Request.Files[i].FileName);
+                        extension = fileName.Split('.')[1];
+                        HttpPostedFileBase file = files[i];
+
+                        fileName = Tsp.PolicyProcedureVersionDetails_Id + "_" + dt + "_" + fileName;
+                        url = url + fileName;
+
+                        string ext = System.IO.Path.GetExtension(fileName);
+                        Tsp.DocPath = url;
+                        db.Entry(Tsp).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        if (ext.ToLower() == ".docx" || ext.ToLower() == ".pdf" || ext.ToLower() == ".jpg" || ext.ToLower() == ".jpeg" || ext.ToLower() == ".xlsx")
+                        {
+
+                            XmlNode xmlresCategoryFolder = createFolder(sharePointId, pwd, categoryName, Attchment, lib);
+                            //XmlNode xmlresSubCategoryFolder = createFolder(sharePointId, pwd, subCategoryName, Attchment + "/" + categoryName, lib);
+
+                            using (var br = new System.IO.BinaryReader(file.InputStream))
+                            {
+                                bytes = br.ReadBytes(file.ContentLength);
+                            }
+                            string tempAttachment = Attchment + "/" + categoryName;
+                            XmlNode xmlres = createFolder(sharePointId, pwd, subCategoryTwoName, tempAttachment, lib);
+                            res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+                            if (res != "" && res.Substring(0, 1).Equals("1"))
+                            {
+                                //return Json("Success", JsonRequestBehavior.AllowGet);
+                            }
+                        }
+                    }
+                    //upload new file on share point ends here
+
+                    downloadFile(Tsp.DocPath);
+                    fileName = Path.GetFileName(Tsp.DocPath);
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+                    Section se;
+                    Table firstTable;
+                    se = doc.Sections[0];
+                    firstTable = (Table)se.Tables[0];
+                    firstTable.Rows.Insert(firstTable.Rows.Count, firstTable.AddRow()); //new blank row inserted
+
+
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//insert data in blank row
+                    se = doc.Sections[0];
+                    firstTable = (Table)se.Tables[0];
+                    List<String> st_first = new List<string> { };
+                    st_first.Add(ds.GetDisplayNamefromUserID(Tsp.SubmittedBy));
+                    st_first.Add(dt);
+                    st_first.Add(sectionAffected);
+                    st_first.Add(version);
+                    for (int i = 0; i < firstTable.LastRow.Cells.Count; i++)
+                    {
+                        firstTable.LastRow.Cells[i].Paragraphs[0].AppendText(st_first[i]);
+                    }
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+
+                    //upload file to share point code starts here
+                    bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + fileName);
+                    fileName = Tsp.PolicyProcedureVersionDetails_Id + "_" + dt + "_" + fileName;
+                    res = uploadFileToSharePoint(fileName, Tsp.DocPath, bytes, sharePointId, sharePointId, pwd);
+                    if (res != "" && res.Substring(0, 1).Equals("1"))
+                    {
+                        System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + fileName));
+                        return Json("Success", JsonRequestBehavior.AllowGet);
+                    }
+                    //upload file to share point code ends here
+                }
+                else if (IsChange == "No")
+                {
+                    Tsp = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id));
+                    //Tsp = db.Tbl_PolicyProcedureVersionDetails.OrderByDescending(a => a.PolicyProcedureVersionDetails_Id).FirstOrDefault();
+                    downloadFile(Tsp.DocPath);
+                    fileName = Path.GetFileName(Tsp.DocPath);
+                    //doc = new Document(Server.MapPath("~/DownloadFile/" + fileName));
+
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+
+
+                    Section se;
+                    Table firstTable;
+                    se = doc.Sections[0];
+                    firstTable = (Table)se.Tables[0];
+                    firstTable.Rows.Insert(firstTable.Rows.Count, firstTable.AddRow()); //new blank row inserted
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//insert data in blank row
+                    se = doc.Sections[0];
+                    firstTable = (Table)se.Tables[0];
+                    List<String> st_first = new List<string> { };
+                    st_first.Add(ds.GetDisplayNamefromUserID(Tsp.SubmittedBy));
+                    st_first.Add(dt);
+                    st_first.Add(sectionAffected);
+                    st_first.Add(version);
+                    for (int i = 0; i < firstTable.LastRow.Cells.Count; i++)
+                    {
+                        firstTable.LastRow.Cells[i].Paragraphs[0].AppendText(st_first[i]);
+                    }
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                    //upload file to share point code starts here
+                    bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + fileName);
+                    string tempFileNameForDelete = fileName;
+                    fileName = Tsp.PolicyProcedureVersionDetails_Id + "_" + dt + "_" + fileName.Substring((fileName.LastIndexOf('_') + 1));
+
+                    string url = Attchment + "/" + categoryName + "/" + subCategoryTwoName + "/";
+
+                    url = url + fileName;
+                    Tsp.DocPath = url;
+
+                    res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+
+                    if (res != "" && res.Substring(0, 1).Equals("1"))
+                    {
+                        db.Entry(Tsp).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + tempFileNameForDelete));
+                        return Json("Success", JsonRequestBehavior.AllowGet);
+                    }
+                    //upload file to share point code ends here
+                }
+            }
+            catch (Exception e)
+            {
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+
+
+
+
+            return Json("Fail", JsonRequestBehavior.AllowGet); ;
+
+        }
+
+
+        public JsonResult fileUploadForPolicyAndProcedureInBulk(int Id)
+        {
+            string msg = "Fail";
+            Document doc = new Document();
+            Tbl_PolicyProcedureVersionDetails Tsp;
+            string user = HttpContext.User.Identity.Name.Split('\\')[1];
+            string fileName = "";
+            string extension = "";
+            byte[] bytes;
+            string res = "";
+            string dt = DateTime.Now.Date.ToString("dd_MM_yyyy");
+            try
+            {
+
+                Tsp = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id));
+                //Tsp = db.Tbl_PolicyProcedureVersionDetails.OrderByDescending(a => a.PolicyProcedureVersionDetails_Id).FirstOrDefault();
+                downloadFile(Tsp.DocPath);
+                fileName = Path.GetFileName(Tsp.DocPath);
+                //doc = new Document(Server.MapPath("~/DownloadFile/" + fileName));
+
+                doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+
+
+                Section se;
+                Table firstTable;
+                se = doc.Sections[0];
+                firstTable = (Table)se.Tables[0];
+                firstTable.Rows.Insert(firstTable.Rows.Count, firstTable.AddRow()); //new blank row inserted
+                doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//insert data in blank row
+                se = doc.Sections[0];
+                firstTable = (Table)se.Tables[0];
+                List<String> st_first = new List<string> { };
+                st_first.Add(ds.GetDisplayNamefromUserID(Tsp.SubmittedBy));
+                st_first.Add(dt);
+                st_first.Add(Tsp.SectionsAffected);
+                st_first.Add(Tsp.Version);
+                for (int j = 0; j < firstTable.LastRow.Cells.Count; j++)
+                {
+                    firstTable.LastRow.Cells[j].Paragraphs[0].AppendText(st_first[j]);
+                }
+                doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                                                                                              //upload file to share point code starts here
+                bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + fileName);
+                string tempFileNameForDelete = fileName;
+                fileName = Tsp.PolicyProcedureVersionDetails_Id + "_" + dt + "_" + fileName.Substring((fileName.LastIndexOf('_') + 1));
+
+                string url = Tsp.DocPath.Substring(0, Tsp.DocPath.LastIndexOf('/')) + "/" + fileName;
+
+                //url = url + fileName;
+                Tsp.DocPath = url;
+
+                res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);
+
+                if (res != "" && res.Substring(0, 1).Equals("1"))
+                {
+                    db.Entry(Tsp).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + tempFileNameForDelete));
+                    return Json("Success", JsonRequestBehavior.AllowGet);
+                }
+                //upload file to share point code ends here
+
+
+            }
+            catch (Exception e)
+            {
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+
+
+            return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+        public string uploadFileToSharePoint(string filename, string SharePointPath, byte[] data, string bpid, string id, string pwd)
+        {
+            try
+            {
+                string result = "";
+                copy.Copy cf = new copy.Copy();
+                NetworkCredential nc = new NetworkCredential(id, pwd, shpdomain);
+                cf.Credentials = nc;
+                copy.FieldInformation[] info = { };
+                copy.CopyResult[] res;
+                string[] desturls = { SharePointPath };
+                uint copyres = cf.CopyIntoItems(filename, desturls, info, data, out res);
+                if (res[0].ErrorCode == copy.CopyErrorCode.Success)
+                {
+                    result = "1: Successfully uploaded";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.Unknown)
+                {
+                    result = "2: UnCaught Error occured while uploading the file";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.SourceInvalid)
+                {
+                    result = "2: Source Invalid Error";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.InvalidUrl)
+                {
+                    result = "2: Invalid Url Error";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.DestinationInvalid)
+                {
+                    result = "2: Destination Invalid";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.DestinationCheckedOut)
+                {
+                    result = "2: Destination Checked Out Error";
+                }
+                else if (res[0].ErrorCode == copy.CopyErrorCode.DestinationMWS)
+                {
+                    result = "2: Destination MWS Error";
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        public ActionResult PolicyDetail()
+        {
+            return View();
+        }
+
+        public JsonResult PolicyProcedureDetailAddUpdate(string Id, string subCategoryTwoId, string sectionAffected, string version, string init_Remark, string submittedOn)
+        {
+            string msg = "";
+            Tbl_PolicyProcedureVersionDetails tpv = null;
+            if (Id != "null")
+            {
+                tpv = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id));
+            }
+            if (tpv != null)
+            {
+                if (tpv.Status == "Submitted")
+                {
+                    try
+                    {
+                        tpv.SubCategoryTwo_FK_Id = Convert.ToInt32(subCategoryTwoId);
+                        tpv.SectionsAffected = sectionAffected;
+                        tpv.Version = version;
+                        tpv.Init_Remark = init_Remark;
+                        tpv.SubmittedOn = Convert.ToDateTime(submittedOn);
+                        tpv.SubmittedBy = Convert.ToString(Session["user"]);
+                        tpv.Status = "Submitted";
+                        tpv.IsLastestRev = true;
+                        tpv.Rev = 0;
+                        db.Entry(tpv).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        msg = "Success";
+                        return Json(msg, JsonRequestBehavior.AllowGet);
+                    }
+                    catch (Exception e)
+                    {
+                        return Json("Fail", JsonRequestBehavior.AllowGet);
+                    }
+                }
+                else if (tpv.Status == "Approved")
+                {
+                    try
+                    {
+                        tpv.IsLastestRev = false;
+                        int lastRev = tpv.Rev.Value;
+                        db.Entry(tpv).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        tpv = new Tbl_PolicyProcedureVersionDetails();
+                        tpv.SubCategoryTwo_FK_Id = Convert.ToInt32(subCategoryTwoId);
+                        tpv.SectionsAffected = sectionAffected;
+                        tpv.Version = version;
+                        tpv.Init_Remark = init_Remark;
+                        tpv.SubmittedOn = Convert.ToDateTime(submittedOn);
+                        tpv.SubmittedBy = Convert.ToString(Session["user"]);
+                        tpv.Status = "Submitted";
+                        //tpv.DocPath = db.Tbl_PolicyProcedureVersionDetails.OrderByDescending(a => a.PolicyProcedureVersionDetails_Id).FirstOrDefault().DocPath;
+                        tpv.DocPath = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id)).DocPath;//exsisting old file doc path
+                        tpv.IsLastestRev = true;
+                        tpv.Rev = lastRev + 1;
+                        db.Tbl_PolicyProcedureVersionDetails.Add(tpv);
+                        db.SaveChanges();
+                        int tempPolicyProcedureVersionDetails_Id = tpv.PolicyProcedureVersionDetails_Id;
+                        string type = (from a in db.Tbl_PolicyProcedureVersionDetails
+                                       join
+                                        b in db.Tbl_SubCategory_Two on a.SubCategoryTwo_FK_Id equals b.SubCategoryTwo_Id
+                                       join
+                                        c in db.Tbl_SubCategory on b.SubCategory_FK_Id equals c.SubCategory_Id
+                                       join
+                                        d in db.Tbl_Category on c.Category_FK_Id equals d.Category_Id
+                                       where a.PolicyProcedureVersionDetails_Id == tempPolicyProcedureVersionDetails_Id
+                                       select d.Name
+                                     ).ToString();
+                        string mailTo = ds.GetEmailIDfromUserID(ApprovedBy);
+                        string mailFrom = ds.GetEmailIDfromUserID(tpv.SubmittedBy.ToString());
+                        db.SP_MailRemainderForPolicyProcedure(tempPolicyProcedureVersionDetails_Id, mailTo, mailFrom, type, tpv.Status.ToString());
+                        msg = "Success";
+                        return Json(msg, JsonRequestBehavior.AllowGet);
+                    }
+                    catch (Exception e)
+                    {
+                        return Json("Fail", JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            else
+            {
+                try
+                {
+                    tpv = new Tbl_PolicyProcedureVersionDetails();
+                    tpv.SubCategoryTwo_FK_Id = Convert.ToInt32(subCategoryTwoId);
+                    tpv.SectionsAffected = sectionAffected;
+                    tpv.Version = version;
+                    tpv.Init_Remark = init_Remark;
+                    tpv.SubmittedOn = Convert.ToDateTime(submittedOn);
+                    tpv.SubmittedBy = Convert.ToString(Session["user"]);
+                    tpv.Status = "Submitted";
+                    tpv.IsLastestRev = true;
+                    tpv.Rev = 0;
+                    db.Tbl_PolicyProcedureVersionDetails.Add(tpv);
+                    db.SaveChanges();
+                    int tempPolicyProcedureVersionDetails_Id = tpv.PolicyProcedureVersionDetails_Id;
+                    string type = (from a in db.Tbl_PolicyProcedureVersionDetails
+                                   join
+                                    b in db.Tbl_SubCategory_Two on a.SubCategoryTwo_FK_Id equals b.SubCategoryTwo_Id
+                                   join
+                                    c in db.Tbl_SubCategory on b.SubCategory_FK_Id equals c.SubCategory_Id
+                                   join
+                                    d in db.Tbl_Category on c.Category_FK_Id equals d.Category_Id
+                                   where a.PolicyProcedureVersionDetails_Id == tempPolicyProcedureVersionDetails_Id
+                                   select d.Name
+                                 ).FirstOrDefault().ToString();
+                    string mailTo = ds.GetEmailIDfromUserID(ApprovedBy);
+                    string mailFrom = ds.GetEmailIDfromUserID(tpv.SubmittedBy.ToString());
+                    db.SP_MailRemainderForPolicyProcedure(tempPolicyProcedureVersionDetails_Id, mailTo, mailFrom, type, tpv.Status.ToString());
+                    msg = "Success";
+                    return Json(msg, JsonRequestBehavior.AllowGet);
+                }
+                catch (Exception e)
+                {
+                    return Json("Fail", JsonRequestBehavior.AllowGet);
+                }
+
+
+            }
+            return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+
+        public JsonResult PolicyProcedureDetailAddUpdateIBulk(string[] Id)
+        {
+            string msg = "";
+            Tbl_PolicyProcedureVersionDetails tpvOld = null;
+            for (int i = 0; i < Id.Count(); i++)
+            {
+                if (Id[i] != "null")
+                {
+                    tpvOld = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id[i]));
+                }
+                if (tpvOld != null)
+                {
+
+                    if (tpvOld.Status == "Approved")
+                    {
+                        try
+                        {
+                            tpvOld.IsLastestRev = false;
+                            int lastRev = tpvOld.Rev.Value;
+                            db.Entry(tpvOld).State = System.Data.Entity.EntityState.Modified;
+                            db.SaveChanges();
+                            Tbl_PolicyProcedureVersionDetails tpvNew = new Tbl_PolicyProcedureVersionDetails();
+                            tpvNew.SubCategoryTwo_FK_Id = tpvOld.SubCategoryTwo_FK_Id;
+                            tpvNew.SectionsAffected = "Renew With No Change";//tpvOld.SectionsAffected
+                            tpvNew.Version = (Int32.Parse(tpvOld.Version) + 1).ToString();
+                            tpvNew.Init_Remark = "Renew With No Change";//tpvOld.Init_Remark
+                            tpvNew.SubmittedOn = tpvOld.SubmittedOn;
+                            tpvNew.SubmittedBy = Convert.ToString(Session["user"]);
+                            tpvNew.Status = "Submitted";
+                            tpvNew.DocPath = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id[i])).DocPath;
+                            tpvNew.IsLastestRev = true;
+                            tpvNew.Rev = lastRev + 1;
+                            db.Tbl_PolicyProcedureVersionDetails.Add(tpvNew);
+                            db.SaveChanges();
+                            fileUploadForPolicyAndProcedureInBulk(tpvNew.PolicyProcedureVersionDetails_Id);
+
+                            //mail send code
+                            int tempPolicyProcedureVersionDetails_Id = tpvNew.PolicyProcedureVersionDetails_Id;
+                            string type = (from a in db.Tbl_PolicyProcedureVersionDetails
+                                           join
+                                            b in db.Tbl_SubCategory_Two on a.SubCategoryTwo_FK_Id equals b.SubCategoryTwo_Id
+                                           join
+                                            c in db.Tbl_SubCategory on b.SubCategory_FK_Id equals c.SubCategory_Id
+                                           join
+                                            d in db.Tbl_Category on c.Category_FK_Id equals d.Category_Id
+                                           where a.PolicyProcedureVersionDetails_Id == tempPolicyProcedureVersionDetails_Id
+                                           select d.Name
+                                         ).ToString();
+                            string mailTo = ds.GetEmailIDfromUserID(ApprovedBy);
+                            string mailFrom = ds.GetEmailIDfromUserID(tpvNew.SubmittedBy.ToString());
+                            db.SP_MailRemainderForPolicyProcedure(tempPolicyProcedureVersionDetails_Id, mailTo, mailFrom, type, tpvNew.Status.ToString());
+                            msg = "Success";
+
+                        }
+                        catch (Exception e)
+                        {
+                            return Json("Fail", JsonRequestBehavior.AllowGet);
+                        }
+                    }
+                }
+            }
+
+            return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult getPolicyProcedureDetail(string categoryId)
+        {
+            try
+            {
+                int Id = Convert.ToInt32(categoryId);
+                var list = db.vw_PolicyProcedureVersionDetails.Where(a => a.Category_Id == Id).ToList();
+                var statusList = new List<String> { };
+                var curDate = DateTime.Now.Date;
+                //var curDate = new DateTime(2020,09,22).Date;//(yyyy,mm,dd)
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (list[i].Status == "Approved")
+                    {
+                        if (curDate > Convert.ToDateTime(list[i].ApprovedOn.Value.AddMonths(12).Date))
+                        {
+                            statusList.Add("danger");
+                        }
+                        else if (curDate >= list[i].ApprovedOn.Value.AddMonths(11).Date && curDate <= list[i].ApprovedOn.Value.AddMonths(12).Date)
+                        {
+                            statusList.Add("warning");
+                        }
+                        else
+                        {
+                            statusList.Add("green");
+                        }
+                    }
+                    else
+                    {
+                        statusList.Add("");
+                    }
+                }
+                return Json(new
+                {
+                    list = list,
+                    status = statusList
+                }, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("", JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        public ActionResult ProcedureDetail()
+        {
+            return View();
+        }
+
+        public JsonResult getSubcategoryTwoDataForPendingPolices()
+        {
+            // var list = db.Tbl_SubCategory_Two.Where(a => a.Status == "Submitted").OrderBy(a => a.SubmittedOn).ToList();
+            return Json("", JsonRequestBehavior.AllowGet);
+        }
+
+        public ActionResult PloicyDetailApprove()
+        {
+            return View();
+        }
+        public JsonResult PolicyProcedureDetailApprove(string Id, string approve_remark, string subCategoryTwoId, string categoryId)
+        {
+            string msg = "";
+            Tbl_PolicyProcedureVersionDetails tpv = null;
+            int tempCategoryId = Convert.ToInt32(categoryId);
+            int tempsubCategoryTwoId = Convert.ToInt32(subCategoryTwoId);
+            string categoryName = db.Tbl_Category.Find(tempCategoryId).Name;
+            string subCategoryTwoName = db.Tbl_SubCategory_Two.Find(tempsubCategoryTwoId).SubCategoryTwo_Name;
+            try
+            {
+                tpv = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id));
+                tpv.ApprovedOn = DateTime.Now;
+                tpv.ApprovedBy = ApprovedBy;
+                tpv.Approver_Remark = approve_remark;
+                tpv.Status = "Approved";
+                string url = tpv.DocPath;
+                string version = tpv.Version;
+                db.Entry(tpv).State = System.Data.Entity.EntityState.Modified;
+                db.SaveChanges();
+                downloadFile(url);
+                string fileName = Path.GetFileName(url);
+                Document doc = new Document();
+                doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+                Section se;
+                Table secondTable;
+                se = doc.Sections[0];
+                secondTable = (Table)se.Tables[1];
+                secondTable.Rows.Insert(secondTable.Rows.Count, secondTable.AddRow()); //new blank row inserted
+                doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//insert data in blank row
+                se = doc.Sections[0];
+                secondTable = (Table)se.Tables[1];
+                se = doc.Sections[0];
+                string dt = DateTime.Now.Date.ToString("dd_MM_yyyy");
+                List<String> st_first = new List<string> { };
+                st_first.Add(ds.GetDisplayNamefromUserID(ApprovedBy));
+                st_first.Add(dt);
+                st_first.Add(approve_remark);
+                st_first.Add(version);
+                for (int i = 0; i < secondTable.LastRow.Cells.Count; i++)
+                {
+                    secondTable.LastRow.Cells[i].Paragraphs[0].AppendText(st_first[i]);
+                }
+                doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+
+                doc = new Document();
+                doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+                string tempFileNameForPDF = Path.GetFileNameWithoutExtension(fileName);
+                doc.SaveToFile(Server.MapPath("~/DownloadFile/") + tempFileNameForPDF + ".PDF", FileFormat.PDF);
+                //upload file to share point code starts here
+                byte[] bytes;
+                string res;
+                bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + fileName);
+
+                res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);//docs file upload
+                if (res != "" && res.Substring(0, 1).Equals("1"))
+                {
+                    System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + fileName));
+
+                }
+                //pdf file upload start
+                bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + tempFileNameForPDF + ".PDF");
+
+                url = Attchment + "/" + categoryName + "/" + subCategoryTwoName + "/" + tempFileNameForPDF + ".PDF";
+                res = uploadFileToSharePoint(tempFileNameForPDF + ".PDF", url, bytes, sharePointId, sharePointId, pwd);//PDF File Upload
+                if (res != "" && res.Substring(0, 1).Equals("1"))
+                {
+                    string fullPath = url;
+                    //fullPath += tempFileNameForPDF;
+                    int id = Convert.ToInt32(Id);
+                    Tbl_SubCategory_Two ts = db.Tbl_SubCategory_Two.Where(a => a.Tbl_PolicyProcedureVersionDetails.Where(b => b.PolicyProcedureVersionDetails_Id == id).FirstOrDefault().SubCategoryTwo_FK_Id == a.SubCategoryTwo_Id).FirstOrDefault();
+                    ts.DocPath = fullPath;
+                    db.Entry(ts).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + tempFileNameForPDF + ".PDF"));
+
+
+                    //mail send code
+                    int tempPolicyProcedureVersionDetails_Id = tpv.PolicyProcedureVersionDetails_Id;
+                    string type = (from a in db.Tbl_PolicyProcedureVersionDetails
+                                   join
+                                    b in db.Tbl_SubCategory_Two on a.SubCategoryTwo_FK_Id equals b.SubCategoryTwo_Id
+                                   join
+                                    c in db.Tbl_SubCategory on b.SubCategory_FK_Id equals c.SubCategory_Id
+                                   join
+                                    d in db.Tbl_Category on c.Category_FK_Id equals d.Category_Id
+                                   where a.PolicyProcedureVersionDetails_Id == tempPolicyProcedureVersionDetails_Id
+                                   select d.Name
+                                 ).ToString();
+                    string mailTo = ds.GetEmailIDfromUserID(tpv.SubmittedBy.ToString());
+                    string mailFrom = ds.GetEmailIDfromUserID(tpv.ApprovedBy.ToString());
+                    db.SP_MailRemainderForPolicyProcedure(tempPolicyProcedureVersionDetails_Id, mailTo, mailFrom, type, tpv.Status.ToString());
+
+                    return Json("Success", JsonRequestBehavior.AllowGet);
+                }
+
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+            //return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult PolicyProcedureDetailApproveInBulk(string[] Id, string approve_remark)
+        {
+            string msg = "";
+            Tbl_PolicyProcedureVersionDetails tpv = null;
+            //int tempCategoryId = Convert.ToInt32(categoryId);
+            //int tempsubCategoryTwoId = Convert.ToInt32(subCategoryTwoId);
+            //string categoryName = db.Tbl_Category.Find(tempCategoryId).Name;
+            //string subCategoryTwoName = db.Tbl_SubCategory_Two.Find(tempsubCategoryTwoId).SubCategoryTwo_Name;
+            try
+            {
+                for (int k = 0; k < Id.Count(); k++)
+                {
+                    tpv = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id[k]));
+                    tpv.ApprovedOn = DateTime.Now;
+                    tpv.ApprovedBy = ApprovedBy;
+                    tpv.Approver_Remark = approve_remark;
+                    tpv.Status = "Approved";
+                    string url = tpv.DocPath;
+                    string version = tpv.Version;
+                    db.Entry(tpv).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                    downloadFile(url);
+                    string fileName = Path.GetFileName(url);
+                    Document doc = new Document();
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+                    Section se;
+                    Table secondTable;
+                    se = doc.Sections[0];
+                    secondTable = (Table)se.Tables[1];
+                    secondTable.Rows.Insert(secondTable.Rows.Count, secondTable.AddRow()); //new blank row inserted
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//insert data in blank row
+                    se = doc.Sections[0];
+                    secondTable = (Table)se.Tables[1];
+                    se = doc.Sections[0];
+                    string dt = DateTime.Now.Date.ToString("dd_MM_yyyy");
+                    List<String> st_first = new List<string> { };
+                    st_first.Add(ds.GetDisplayNamefromUserID(ApprovedBy));
+                    st_first.Add(dt);
+                    st_first.Add(approve_remark);
+                    st_first.Add(version);
+                    for (int i = 0; i < secondTable.LastRow.Cells.Count; i++)
+                    {
+                        secondTable.LastRow.Cells[i].Paragraphs[0].AppendText(st_first[i]);
+                    }
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);//save file
+
+                    doc = new Document();
+                    doc.LoadFromFile(Server.MapPath("~/DownloadFile/") + fileName, FileFormat.Auto);
+                    string tempFileNameForPDF = Path.GetFileNameWithoutExtension(fileName);
+                    doc.SaveToFile(Server.MapPath("~/DownloadFile/") + tempFileNameForPDF + ".PDF", FileFormat.PDF);
+                    //upload file to share point code starts here
+                    byte[] bytes;
+                    string res;
+                    bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + fileName);
+
+                    res = uploadFileToSharePoint(fileName, url, bytes, sharePointId, sharePointId, pwd);//docs file upload
+                    if (res != "" && res.Substring(0, 1).Equals("1"))
+                    {
+                        System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + fileName));
+
+                    }
+                    //pdf file upload start
+                    bytes = System.IO.File.ReadAllBytes(Server.MapPath("~/DownloadFile/") + tempFileNameForPDF + ".PDF");
+
+                    url = url.Substring(0, url.LastIndexOf('/')) + "/" + tempFileNameForPDF + ".PDF";
+                    res = uploadFileToSharePoint(tempFileNameForPDF + ".PDF", url, bytes, sharePointId, sharePointId, pwd);//PDF File Upload
+                    if (res != "" && res.Substring(0, 1).Equals("1"))
+                    {
+                        string fullPath = url;
+                        //fullPath += tempFileNameForPDF;
+                        int id = Convert.ToInt32(Id[k]);
+                        Tbl_SubCategory_Two ts = db.Tbl_SubCategory_Two.Where(a => a.Tbl_PolicyProcedureVersionDetails.Where(b => b.PolicyProcedureVersionDetails_Id == id).FirstOrDefault().SubCategoryTwo_FK_Id == a.SubCategoryTwo_Id).FirstOrDefault();
+                        ts.DocPath = fullPath;
+                        db.Entry(ts).State = System.Data.Entity.EntityState.Modified;
+                        db.SaveChanges();
+                        System.IO.File.Delete(Server.MapPath("~/DownloadFile/" + tempFileNameForPDF + ".PDF"));
+
+
+
+                        //mail send code
+                        int tempPolicyProcedureVersionDetails_Id = tpv.PolicyProcedureVersionDetails_Id;
+                        string type = (from a in db.Tbl_PolicyProcedureVersionDetails
+                                       join
+                                        b in db.Tbl_SubCategory_Two on a.SubCategoryTwo_FK_Id equals b.SubCategoryTwo_Id
+                                       join
+                                        c in db.Tbl_SubCategory on b.SubCategory_FK_Id equals c.SubCategory_Id
+                                       join
+                                        d in db.Tbl_Category on c.Category_FK_Id equals d.Category_Id
+                                       where a.PolicyProcedureVersionDetails_Id == tempPolicyProcedureVersionDetails_Id
+                                       select d.Name
+                                     ).ToString();
+                        string mailTo = ds.GetEmailIDfromUserID(tpv.SubmittedBy.ToString());
+                        string mailFrom = ds.GetEmailIDfromUserID(tpv.ApprovedBy.ToString());
+                        db.SP_MailRemainderForPolicyProcedure(tempPolicyProcedureVersionDetails_Id, mailTo, mailFrom, type, tpv.Status.ToString());
+                        
+                        
+                        //return Json("Success", JsonRequestBehavior.AllowGet);
+                    }
+
+                }
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+            //return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+
+        public JsonResult PolicyProcedureDetailReject(string Id, string approve_remark)
+        {
+            string msg = "";
+            Tbl_PolicyProcedureVersionDetails tpv = null;
+            try
+            {
+                tpv = db.Tbl_PolicyProcedureVersionDetails.Find(Convert.ToInt32(Id));
+                tpv.Status = "Rejected";
+                tpv.Approver_Remark = approve_remark;
+                tpv.ApprovedOn = DateTime.Now;
+                tpv.ApprovedBy = ApprovedBy;
+                db.Entry(tpv).State = System.Data.Entity.EntityState.Modified;
+                db.SaveChanges();
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+            //return Json(msg, JsonRequestBehavior.AllowGet);
+        }
+
+        public ActionResult PocedureDetailApprove()
+        {
+            return View();
+        }
+
+
+        public ActionResult LogDetail()
+        {
+            return View();
+        }
+
+        public JsonResult LogDetailSubmit(string[] Id)
+        {
+            string msg = "Fail";
+            try
+            {
+                for (int i = 0; i < Id.Length; i++)
+                {
+                    int tempId = Convert.ToInt32(Id[i]);
+                    Tbl_LogDetails tl = db.Tbl_LogDetails.Where(a => a.SubCategoryTwo_FK_Id == tempId).First();
+                    tl.Status = "Submitted";
+                    db.Entry(tl).State = System.Data.Entity.EntityState.Modified;
+                    db.SaveChanges();
+                }
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            return Json("", JsonRequestBehavior.AllowGet);
+        }
+        public JsonResult getLogDetail()
+        {
+            string curUser = Convert.ToString(Session["user"]);
+            var list = db.SP_GetLogDetail(curUser).ToList();
+            return Json(new { list = list }, JsonRequestBehavior.AllowGet);
+        }
+        public JsonResult getLogsDetailForSubmit(string Id, string Month)
+        {
+            int tempId = Convert.ToInt32(Id);
+            var list = db.SP_GetLogDetailForSubmit(tempId, Month).ToList();
+            return Json(new { list = list }, JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult getPolicyProcedureDetailForApprove(string categoryId)
+        {
+            try
+            {
+                int Id = Convert.ToInt32(categoryId);
+                var list = db.vw_PolicyProcedureVersionDetails.Where(a => a.Category_Id == Id).Where(a => a.Status == "Submitted").ToList();
+                return Json(list, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("", JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        public JsonResult getSubCategoryAllData()
+        {
+            try
+            {
+                var list = db.SP_GetSubCategoryAllData().ToList();
+                return Json(list, JsonRequestBehavior.AllowGet);
+            }
+            catch
+            {
+                return Json("", JsonRequestBehavior.AllowGet);
+            }
+            //return Json("", JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult getCategoryData(string bindFor)
+        {
+            // db.Configuration.ProxyCreationEnabled = false; else InformationSecurityModel.Context.cs File and in constructor write same line there
+            try
+            {
+                List<string> category = new List<string> { };
+                if (bindFor == "subCategoryTwo")
+                {
+                    category = new List<string> { "Dashboard" };
+                }
+                db.Configuration.ProxyCreationEnabled = false;
+
+                var lst = (from u in db.Tbl_Category
+                           where !category.Contains(u.Name)
+                           select u);
+                return Json(lst, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+        }
+        public JsonResult getSubCategoryDataForDropDown(string categoryID)
+        {
+
+            // db.Configuration.ProxyCreationEnabled = false; else InformationSecurityModel.Context.cs File and in constructor write same line there
+            try
+            {
+                db.Configuration.ProxyCreationEnabled = false;
+                int tempcategoryID = Convert.ToInt32(categoryID);
+                string categoryName = db.Tbl_Category.Find(tempcategoryID).Name.ToString();
+                if (categoryName == "LogManagement")
+                {
+                    string curUser = Convert.ToString(Session["user"]);
+                    var lst = db.Tbl_SubCategory.Where(a => a.Category_FK_Id == tempcategoryID && a.ResponsiblePerson==curUser).OrderBy(a => a.SubCategoryName).Select(a=>new {
+                        a.SubCategory_Id,
+                        a.SubCategoryName
+                    }).ToList();
+                    
+                    return Json(lst, JsonRequestBehavior.AllowGet);
+                }
+                else {
+                    var lst = db.Tbl_SubCategory.Where(a => a.Category_FK_Id == tempcategoryID).OrderBy(a => a.SubCategoryName).Select(a => new {
+                        a.SubCategory_Id,
+                        a.SubCategoryName
+                    }).ToList();
+                    return Json(lst, JsonRequestBehavior.AllowGet);
+                }
+                
+                
+
+            }
+            catch (Exception e)
+            {
+                return Json("", JsonRequestBehavior.AllowGet);
+            }
+        }
+        public JsonResult getSubCategoryTwoAllData()
+        {
+            try
+            {
+                var list = db.SP_GetSubCategoryTwoAllData().ToList();
+                return Json(list, JsonRequestBehavior.AllowGet);
+            }
+            catch
+            {
+                return Json("", JsonRequestBehavior.AllowGet);
+            }
+        }
+
+
+        public JsonResult getSubcategoryDataForUpdate(string Id)
+        {
+            Tbl_SubCategory tsb = db.Tbl_SubCategory.Find(Convert.ToInt32(Id));
+            //var temp = Json.Decode
+            return Json(tsb, JsonRequestBehavior.AllowGet);
+        }
+
+        public JsonResult getSubcategoryTwoDataForUpdate(string Id)
+        {
+            try
+            {
+                db.Configuration.ProxyCreationEnabled = false;
+                Tbl_SubCategory_Two tsb = db.Tbl_SubCategory_Two.Find(Convert.ToInt32(Id));
+                int tempId = Convert.ToInt32(Id);
+                var category_Id = (from u in db.Tbl_SubCategory_Two
+                                   join pr in db.Tbl_SubCategory on u.SubCategory_FK_Id equals pr.SubCategory_Id
+                                   join tr in db.Tbl_Category on pr.Category_FK_Id equals tr.Category_Id
+                                   where u.SubCategoryTwo_Id == tempId
+                                   select tr.Category_Id).First();
+                var categoryName = (from u in db.Tbl_SubCategory_Two
+                                    join pr in db.Tbl_SubCategory on u.SubCategory_FK_Id equals pr.SubCategory_Id
+                                    join tr in db.Tbl_Category on pr.Category_FK_Id equals tr.Category_Id
+                                    where u.SubCategoryTwo_Id == tempId
+                                    select tr.Name).First().ToString();
+                if (categoryName == "LogManagement")
+                {
+
+                    var month = (from u in db.Tbl_SubCategory_Two
+                                 join pr in db.Tbl_LogDetails on u.SubCategoryTwo_Id equals pr.SubCategoryTwo_FK_Id
+                                 where u.SubCategoryTwo_Id.Equals(tempId)
+                                 select new { pr.Month, pr.Status }
+                                 ).First();
+                    return Json(new { tsb = tsb, category_Id = category_Id, month = month }, JsonRequestBehavior.AllowGet);
+                }
+                return Json(new { tsb = tsb, category_Id = category_Id }, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+
+        }
+        public JsonResult deleteSubcategoryTwo(string Id)
+        {
+            var msg = "";
+            try
+            {
+                Tbl_SubCategory_Two Tst = db.Tbl_SubCategory_Two.Find(Convert.ToInt32(Id));
+                try
+                {
+                    //deleteFile(Id);
+                }
+                catch { }
+                int tempId = Convert.ToInt32(Id);
+                string categoryName = (from u in db.Tbl_SubCategory_Two
+                                       join pr in db.Tbl_SubCategory on u.SubCategory_FK_Id equals pr.SubCategory_Id
+                                       join tr in db.Tbl_Category on pr.Category_FK_Id equals tr.Category_Id
+                                       where u.SubCategoryTwo_Id == tempId
+                                       select tr.Name).First().ToString();
+                if (categoryName == "LogManagement")
+                {
+                    db.Tbl_LogDetails.RemoveRange(db.Tbl_LogDetails.Where(a => a.SubCategoryTwo_FK_Id == Tst.SubCategoryTwo_Id));
+                    db.SaveChanges();
+                }
+                else if (categoryName == "Policies" || categoryName == "Procedure")
+                {
+                    db.Tbl_PolicyProcedureVersionDetails.RemoveRange(db.Tbl_PolicyProcedureVersionDetails.Where(a => a.SubCategoryTwo_FK_Id == Tst.SubCategoryTwo_Id));
+                    db.SaveChanges();
+                }
+                db.Tbl_SubCategory_Two.Remove(Tst);
+                db.SaveChanges();
+                msg = "Success";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                msg = "Fail";
+                return Json(msg, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+
+        public JsonResult getPolicyProcedureDataForUpdate(string Id, string subCategoryTwoId)
+        {
+            try
+            {
+                db.Configuration.ProxyCreationEnabled = false;
+                Tbl_PolicyProcedureVersionDetails tpd;
+                string policyName = "";
+                if (Id != "null")
+                {
+                    int id = Convert.ToInt32(Id);
+                    tpd = db.Tbl_PolicyProcedureVersionDetails.Find(id);
+                    policyName = db.Tbl_SubCategory_Two.Find(Convert.ToInt32(subCategoryTwoId)).SubCategoryTwo_Name.ToString();
+                    string dt = tpd.SubmittedOn.Value.ToString("dd/MM/yyyy");
+                    var result = JsonConvert.SerializeObject(tpd, new JsonSerializerSettings
+                    {
+                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                    });
+                    //return Json(new { tpd = tpd, dt = dt, policyName = policyName }, JsonRequestBehavior.AllowGet);
+                    return Json(new { tpd = result, dt = dt, policyName = policyName }, JsonRequestBehavior.AllowGet);
+                }
+                policyName = db.Tbl_SubCategory_Two.Find(Convert.ToInt32(subCategoryTwoId)).SubCategoryTwo_Name.ToString();
+                tpd = db.Tbl_PolicyProcedureVersionDetails.Where(a => a.PolicyProcedureVersionDetails_Id == 0).FirstOrDefault();
+                return Json(new { tpd = tpd, policyName = policyName }, JsonRequestBehavior.AllowGet);
+
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        public void deleteFile(string Id)
+        {
+            try
+            {
+                string SPurl = "";
+                //string Idd = "2019_2";
+                int tempId = Convert.ToInt32(Id);
+                string categoryName = string.Concat(db.Tbl_SubCategory_Two.Find(tempId).Tbl_SubCategory.Tbl_Category.Name.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
+                string subCategoryName = string.Concat(db.Tbl_SubCategory_Two.Find(tempId).Tbl_SubCategory.SubCategoryName.Select(x => Char.IsUpper(x) ? " " + x : x.ToString())).TrimStart(' ');
+
+                string subCategoryTwoName = db.Tbl_SubCategory_Two.Find(tempId).SubCategoryTwo_Name;
+
+
+                //string docName = Id.StartsWith(true,Id);
+                //SPurl = Attchment + "/" + categoryName+"/" +subCategoryName+ "/"+subCategoryTwoName+"/" + docName;
+
+                //var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(SPurl);
+                //request.Timeout = System.Threading.Timeout.Infinite;
+                //request.Credentials = new System.Net.NetworkCredential(sharePointId, pwd, shpdomain);
+                //request.Method = "DELETE";
+                //var response = (System.Net.HttpWebResponse)request.GetResponse();
+
+            }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        public ActionResult ViewDocument(string url)
+        {
+            var response = "ok";
+            //string FileUrl = (string)TempData["FileUrl"];
+
+
+            string FileUrl = url;
+            try
+            {
+                WebClient client = new WebClient();
+
+                client.Credentials = new NetworkCredential(sharePointId, pwd);
+
+                // client.UseDefaultCredentials = true;
+
+                var stream = client.OpenRead(FileUrl);
+
+                //DocumentUltimateWebConfiguration.Current.CacheMaxAge = -1;
+                DocumentSource documentSource = new DocumentSource(new DocumentInfo(new Random().Next(1000) + "0", Path.GetFileName(FileUrl)), new StreamResult(stream));
+                var documentViewer = new DocumentViewer
+                {
+                    // Resizable = true,
+                    DocumentSource = documentSource,
+                };
+                return PartialView("_Viewer", documentViewer);
+            }
+            catch (Exception ex)
+            {
+                return Json(ex.Message, JsonRequestBehavior.AllowGet);
+                //return RedirectToAction("Index");
+                //response.success = false;
+                //response.message = CommonMessage.Error;
+            }
+            //return Json(response, JsonRequestBehavior.AllowGet);
+        }
+        public FileResult GetImage(string psno)
+        {
+            try
+            {
+                string ConnForPhoto = ConfigurationManager.ConnectionStrings["ForPhoto"].ConnectionString;
+                SqlConnection objConn = new SqlConnection(ConnForPhoto);
+                objConn.Open();
+                string sTSQL = "select ImageData from dbo.Images where PSNo=@psno";
+                SqlCommand objCmd = new SqlCommand(sTSQL, objConn);
+                objCmd.CommandType = CommandType.Text;
+                objCmd.Parameters.AddWithValue("@psno", psno.ToString());
+                object data = objCmd.ExecuteScalar();
+                if (data != null)
+                {
+                    objConn.Close();
+                    objCmd.Dispose();
+                    var imageData = ((byte[])data);
+                    return File(imageData, "image/jpg");
+                }
+                else
+                {
+                    MemoryStream ms = new MemoryStream();
+                    System.Drawing.Image imageIn = System.Drawing.Image.FromFile(Server.MapPath("~/Content/Admin/dist/img/user2-160x160.jpg"));
+                    imageIn.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    return File(ms.ToArray(), "image/png");
+
+                }
+
+            }
+            catch (Exception ex)
+            {
+                MemoryStream ms = new MemoryStream();
+                System.Drawing.Image imageIn = System.Drawing.Image.FromFile(Server.MapPath("~/Content/Admin/dist/img/user2-160x160.jpg"));
+                imageIn.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                return File(ms.ToArray(), "image/png");
+
+            }
+        }
+        public void downloadFile(string url = "")
+        {
+            FileStream fstream = null;
+            string filefullpath = url;
+            string fileName = Path.GetFileName(filefullpath);
+            //string path=Path.GetFullPath(url);
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                byte[] data;
+                byte[] buffer = new byte[2048];
+                WebRequest request = WebRequest.Create(filefullpath);
+                request.Credentials = new NetworkCredential(sharePointId, pwd, shpdomain);
+                using (WebResponse response = request.GetResponse())
+                {
+                    using (Stream responseStream = response.GetResponseStream())
+                    {
+                        using (MemoryStream ms = new MemoryStream())
+                        {
+                            int count = 0;
+                            do
+                            {
+                                count = responseStream.Read(buffer, 0, buffer.Length);
+                                ms.Write(buffer, 0, count);
+                            } while (count != 0);
+                            data = ms.ToArray();
+                        }
+                    }
+                }
+                string filePath = Server.MapPath("~/DownloadFile/" + fileName);
+                using (fstream = new FileStream(filePath, FileMode.Create, FileAccess.ReadWrite))
+                {
+                    fstream.Write(data, 0, data.Length);
+                    fstream.Close();
+                }
+            }
+        }
+
+        public JsonResult ViewFile(string id)
+        {
+            int subCategoryTwoId = Convert.ToInt32(id);
+            try
+            {
+                string subCategoryTwoName = db.Tbl_SubCategory_Two.Find(subCategoryTwoId).SubCategoryTwo_Name;
+
+                //var subCategoryName = (from a in db.Tbl_SubCategory_Two
+                //                       join b in db.Tbl_SubCategory
+                //                       on a.SubCategory_FK_Id equals b.SubCategory_Id
+                //                       where a.SubCategoryTwo_Id == subCategoryTwoId
+                //                       select b.SubCategoryName
+                //                       ).FirstOrDefault();
+                //string categoryName = (from a in db.Tbl_SubCategory_Two
+                //                       join b in db.Tbl_SubCategory
+                //                       on a.SubCategory_FK_Id equals b.SubCategory_Id
+                //                       join c in db.Tbl_Category on b.Category_FK_Id equals c.Category_Id
+                //                       where a.SubCategoryTwo_Id == subCategoryTwoId
+                //                       select c.Name
+                //                       ).FirstOrDefault();
+                string docPath = db.Tbl_SubCategory_Two.Find(subCategoryTwoId).DocPath;
+                string docName = docPath.Substring((docPath.LastIndexOf('/') + 1));
+                //string SPurl = Attchment + "/" + categoryName + "/" + subCategoryName + "/" + subCategoryTwoName + "/" + docName;
+                //downloadFile(SPurl);
+                return Json(docPath, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception e)
+            {
+                return Json("Fail", JsonRequestBehavior.AllowGet);
+            }
+        }
+    }
+}
